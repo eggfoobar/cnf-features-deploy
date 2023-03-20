@@ -273,3 +273,35 @@ func mergeJsonCommonKey(mergeWith, mergeTo, key string) (string, error) {
 	}
 	return string(newJson), nil
 }
+
+func applyWorkloadPinningInstallConfigOverrides(clusterSpec *Clusters) (string, error) {
+	clusterIsPartitioned := false
+	for _, node := range clusterSpec.Nodes {
+		// If a CPUSet exists on any of the nodes, the whole cluster, regardless if SNO or not, must be setup
+		// for partitioning.
+		if node.Cpuset != "" {
+			clusterIsPartitioned = true
+			break
+		}
+	}
+
+	if clusterIsPartitioned {
+		defaultValues := map[string]interface{}{
+			"cpuPartitioningMode": "AllNodes",
+		}
+		if clusterSpec.InstallConfigOverrides != "" {
+			err := json.Unmarshal([]byte(clusterSpec.InstallConfigOverrides), &defaultValues)
+			if err != nil {
+				fmt.Println("err", err)
+				return clusterSpec.InstallConfigOverrides, err
+			}
+		}
+
+		byteData, err := json.Marshal(defaultValues)
+		if err != nil {
+			return clusterSpec.InstallConfigOverrides, err
+		}
+		return string(byteData), nil
+	}
+	return clusterSpec.InstallConfigOverrides, nil
+}

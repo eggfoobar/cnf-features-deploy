@@ -2,7 +2,6 @@ package siteConfig
 
 import (
 	"bytes"
-	base64 "encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -330,39 +329,6 @@ func populateSpec(filePath string, instantiatedCR map[string]interface{}) error 
 	return nil
 }
 
-func (scbuilder *SiteConfigBuilder) getWorkloadManifest(cpuSet string, role string) (string, interface{}, error) {
-	filePath := scbuilder.scBuilderExtraManifestPath + "/" + workloadPath
-	crio, err := ReadExtraManifestResourceFile(filePath + "/" + workloadCrioFile)
-	if err != nil {
-		return "", nil, err
-	}
-	crioStr := string(crio)
-	crioStr = strings.Replace(crioStr, cpuset, cpuSet, -1)
-	crioStr = base64.StdEncoding.EncodeToString([]byte(crioStr))
-	kubelet, err := ReadExtraManifestResourceFile(filePath + "/" + workloadKubeletFile)
-	if err != nil {
-		return "", nil, err
-	}
-	kubeletStr := string(kubelet)
-	kubeletStr = strings.Replace(kubeletStr, cpuset, cpuSet, -1)
-	kubeletStr = base64.StdEncoding.EncodeToString([]byte(kubeletStr))
-	workload, err := ReadExtraManifestResourceFile(filePath + "/" + workloadFile)
-	if err != nil {
-		return "", nil, err
-	}
-	workloadStr := string(workload)
-	workloadStr = strings.Replace(workloadStr, "$crio", crioStr, -1)
-	workloadStr = strings.Replace(workloadStr, "$k8s", kubeletStr, -1)
-	workloadStr = strings.Replace(workloadStr, "$mcp", role, -1)
-
-	workloadFileParts := append(strings.Split(workloadFile, "-"), "")
-	copy(workloadFileParts[2:], workloadFileParts[1:])
-	workloadFileParts[1] = role
-	workloadFileForRole := strings.Join(workloadFileParts, "-")
-
-	return workloadFileForRole, reflect.ValueOf(workloadStr).Interface(), nil
-}
-
 func (scbuilder *SiteConfigBuilder) getExtraManifest(dataMap map[string]interface{}, clusterSpec Clusters) (map[string]interface{}, error) {
 	// Figure out the list of node roles we need to support in this cluster
 	roles := map[string]bool{}
@@ -415,29 +381,6 @@ func (scbuilder *SiteConfigBuilder) getExtraManifest(dataMap map[string]interfac
 				return dataMap, err
 			}
 			dataMap[file.Name()] = manifestFileStr
-		}
-	}
-
-	// Adding workload partitions MC only for SNO clusters.
-	if clusterSpec.ClusterType == SNO {
-		for node := range clusterSpec.Nodes {
-			cpuSet := clusterSpec.Nodes[node].Cpuset
-			role := clusterSpec.Nodes[node].Role
-			if cpuSet != "" {
-				k, v, err := scbuilder.getWorkloadManifest(cpuSet, role)
-				if err != nil {
-					errStr := fmt.Sprintf("Error could not read WorkloadManifest %s %s\n", clusterSpec.ClusterName, err)
-					return dataMap, errors.New(errStr)
-				} else {
-					data, err := addZTPAnnotationToManifest(v.(string))
-					if err != nil {
-						return dataMap, err
-					}
-					dataMap[k] = data
-					// Exclude the workload manifest
-					doNotMerge[k] = true
-				}
-			}
 		}
 	}
 

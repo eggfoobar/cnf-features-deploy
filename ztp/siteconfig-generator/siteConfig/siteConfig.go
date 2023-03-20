@@ -10,11 +10,6 @@ import (
 )
 
 const localExtraManifestPath = "extra-manifest"
-const workloadPath = "workload"
-const workloadFile = "03-workload-partitioning.yaml"
-const workloadCrioFile = "crio.conf"
-const workloadKubeletFile = "kubelet.conf"
-const cpuset = "$cpuset"
 const SNO = "sno"
 const Standard = "standard"
 const Master = "master"
@@ -223,6 +218,11 @@ func (rv *Clusters) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		rv.NumWorkers = 0
 	} else {
 		rv.ClusterType = Standard
+	}
+
+	rv.InstallConfigOverrides, err = applyWorkloadPinningInstallConfigOverrides(rv)
+	if err != nil {
+		return err
 	}
 	return nil
 }
