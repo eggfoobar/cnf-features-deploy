@@ -34,7 +34,7 @@ spec:
     clusterType: sno
     numMasters: 1
     networkType: "OVNKubernetes"
-    installConfigOverrides: "{\"controlPlane\":{\"hyperthreading\":\"Disabled\"}}"
+    installConfigOverrides: '{"controlPlane":{"hyperthreading":"Disabled"},"cpuPartitioningMode":"AllNodes","networking":{"networkType":"OVNKubernetes"}}'
     clusterLabels:
       group-du-sno: ""
       common: true
@@ -99,7 +99,7 @@ spec:
   - clusterName: "cluster1"
     clusterType: sno
     numMasters: 1
-    installConfigOverrides: "{\"controlPlane\":{\"hyperthreading\":\"Disabled\"}}"
+    installConfigOverrides: '{"networking":{"networkType":"OVNKubernetes"},"controlPlane":{"hyperthreading":"Disabled"},"cpuPartitioningMode":"AllNodes"}'
     clusterLabels:
       group-du-sno: ""
       common: true
@@ -282,19 +282,19 @@ func Test_siteConfigBuildValidation(t *testing.T) {
 
 	sc := SiteConfig{}
 	err := yaml.Unmarshal([]byte(siteConfigTest), &sc)
-	assert.Equal(t, err, nil)
+	assert.Equal(t, nil, err)
 
 	scBuilder, _ := NewSiteConfigBuilder()
 	// Set empty cluster Name
 	sc.Spec.Clusters[0].ClusterName = ""
 	_, err = scBuilder.Build(sc)
-	assert.Equal(t, err, errors.New("Error: Missing cluster name at site test-site"))
+	assert.Equal(t, errors.New("Error: Missing cluster name at site test-site"), err)
 
 	// Set invalid json for installConfigOverride
 	sc.Spec.Clusters[0].ClusterName = "cluster1"
 	sc.Spec.Clusters[0].InstallConfigOverrides = "{networking:{networkType:OpenShiftSDN}}"
 	_, err = scBuilder.Build(sc)
-	assert.Equal(t, err, errors.New("Error: Invalid json parameter set at installConfigOverride"))
+	assert.Equal(t, errors.New("Error: Invalid json parameter set at installConfigOverride"), err)
 
 	// Set repeated cluster names
 	sc.Spec.Clusters[0].NetworkType = "OVNKubernetes"
@@ -302,7 +302,7 @@ func Test_siteConfigBuildValidation(t *testing.T) {
 	sc.Spec.Clusters = append(sc.Spec.Clusters, sc.Spec.Clusters[0])
 	scBuilder.SetLocalExtraManifestPath("testdata/extra-manifest")
 	_, err = scBuilder.Build(sc)
-	assert.Equal(t, err, errors.New("Error: Repeated Cluster Name test-site/cluster1"))
+	assert.Equal(t, errors.New("Error: Repeated Cluster Name test-site/cluster1"), err)
 
 	// Set empty clusterImageSetnameRef
 	sc.Spec.Clusters[0].ClusterName = "cluster1"
@@ -310,25 +310,25 @@ func Test_siteConfigBuildValidation(t *testing.T) {
 	sc.Spec.ClusterImageSetNameRef = ""
 	sc.Spec.Clusters[0].ClusterImageSetNameRef = ""
 	_, err = scBuilder.Build(sc)
-	assert.Equal(t, err, errors.New("Error: Site and cluster clusterImageSetNameRef cannot be empty test-site/cluster1"))
+	assert.Equal(t, errors.New("Error: Site and cluster clusterImageSetNameRef cannot be empty test-site/cluster1"), err)
 }
 
 func Test_siteConfigDifferentClusterVersions(t *testing.T) {
 	sc := SiteConfig{}
 	err := yaml.Unmarshal([]byte(siteConfigTest), &sc)
-	assert.Equal(t, err, nil)
+	assert.Equal(t, nil, err)
 	scBuilder, _ := NewSiteConfigBuilder()
 	// Set a site clusterImageSetNameRef and empty cluster clusterImageSetNameRef
 	sc.Spec.ClusterImageSetNameRef = "openshift-4.8"
 	sc.Spec.Clusters[0].ClusterImageSetNameRef = ""
 	_, err = scBuilder.Build(sc)
 	// expect cluster's clusterImageSetNameRef to match site's clusterImageSetNameRef
-	assert.Equal(t, sc.Spec.Clusters[0].ClusterImageSetNameRef, "openshift-4.8")
+	assert.Equal(t, "openshift-4.8", sc.Spec.Clusters[0].ClusterImageSetNameRef)
 	// Setspecific clusterImageSetNameRef for a specific cluster
 	sc.Spec.Clusters[0].ClusterImageSetNameRef = "openshift-4.9"
 	_, err = scBuilder.Build(sc)
 	// expect cluster's clusterImageSetNameRef to be set to the specific release defined in the cluster
-	assert.Equal(t, sc.Spec.Clusters[0].ClusterImageSetNameRef, "openshift-4.9")
+	assert.Equal(t, "openshift-4.9", sc.Spec.Clusters[0].ClusterImageSetNameRef)
 }
 
 func Test_siteConfigInspect(t *testing.T) {
@@ -356,7 +356,7 @@ func Test_siteConfigInspect(t *testing.T) {
 	for _, test := range tests {
 		sc := SiteConfig{}
 		err := yaml.Unmarshal([]byte(siteConfigTest), &sc)
-		assert.Equal(t, err, nil)
+		assert.Equal(t, nil, err)
 		sc.Spec.Clusters[0].Nodes[0].IronicInspect = IronicInspect(test.input)
 		result, err := scBuilder.Build(sc)
 		if test.expectedError == "" {
@@ -421,16 +421,6 @@ func Test_siteConfigBuildExtraManifest(t *testing.T) {
 	assert.NotEqual(t, clustersCRs["test-site/cluster1"], nil)
 	// expect all the installation CRs generated
 	assert.Equal(t, len(clustersCRs["test-site/cluster1"]), len(scBuilder.SourceClusterCRs))
-	// check for the workload added
-	for _, cr := range clustersCRs["test-site/cluster1"] {
-		mapSourceCR := cr.(map[string]interface{})
-
-		if mapSourceCR["kind"] == "ConfigMap" {
-			dataMap := mapSourceCR["data"].(map[string]interface{})
-			assert.NotEqual(t, dataMap["03-master-workload-partitioning.yaml"], nil)
-			break
-		}
-	}
 
 	// Setting invalid user extra manifest path
 	sc.Spec.Clusters[0].ExtraManifestPath = "invalid-path/extra-manifest"
@@ -1098,18 +1088,8 @@ func Test_filterExtraManifests(t *testing.T) {
 				"04-accelerated-container-startup-worker.yaml":       true,
 				"05-kdump-config-master.yaml":                        true,
 				"06-kdump-master.yaml":                               true,
-				"03-workload-partitioning.yaml":                      true,
 				"99-crio-disable-wipe-master.yaml":                   true,
 				"99-crio-disable-wipe-worker.yaml":                   true},
-		},
-		{
-			name:    "exclude all files except 03-sctp-machine-config-worker.yaml",
-			wantErr: false,
-			args: args{
-				dataMap: getMapWithFileNames("../../source-crs/extra-manifest/"),
-				filter:  fmt.Sprintf(filter, `exclude`, ``, `[03-workload-partitioning.yaml]`),
-			},
-			want: map[string]interface{}{"03-workload-partitioning.yaml": true},
 		},
 		{
 			name:    "error when both include and exclude contain a list of files and user in exclude mode",
